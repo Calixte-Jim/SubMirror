@@ -1,0 +1,132 @@
+# =============================================================================
+# SubMirror v0.1 - Python dependencies
+#
+# Target interpreter: CPython 3.10 - 3.12 (3.11 recommended)
+#   - PySide6, ctranslate2 (faster-whisper) and winsdk must all have wheels
+#   - Python 3.13 may work partially: the WinRT wheel family is the last to
+#     catch up with a new CPython release
+#
+# Install:
+#   python -m pip install --upgrade pip
+#   python -m pip install -r requirements.txt
+#
+# Version policy: lower bound + major-version ceiling (>=x,<y). Nothing is
+# pinned to an exact release, because a desktop tool has to survive whatever
+# wheels a user's Python minor version actually has. The ceilings only exclude
+# releases whose API breaks SubMirror's integration code.
+#
+# SubMirror degrades instead of crashing: every component in this file is
+# optional at runtime except the three marked [required]. If an optional
+# package is missing, that single pipeline reports "unavailable" and the rest
+# of the program keeps running.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# [required] Core runtime
+# -----------------------------------------------------------------------------
+
+# Qt UI: overlay window, settings dialog, system tray, signal/slot only UI updates
+PySide6>=6.6,<6.9
+
+# Audio ring buffer, linear resampling, level metering, OCR image arrays.
+numpy>=1.24,<2.0
+
+# -----------------------------------------------------------------------------
+# [required] WASAPI loopback capture - primary backend
+# -----------------------------------------------------------------------------
+# PyAudioWPatch is PyAudio with the PortAudio WASAPI loopback patches applied.
+# It is the only backend that reliably exposes the *render* endpoint as an input
+# stream on Windows, which is what SubMirror needs: it captures the system mix,
+# never the microphone (capturing the microphone would feed our own TTS output
+# back into the recogniser and create a self-oscillating echo).
+PyAudioWPatch>=0.2.12.7
+
+# -----------------------------------------------------------------------------
+# [required] Speech recognition
+# -----------------------------------------------------------------------------
+# Faster-Whisper. Pulls in ctranslate2, tokenizers, onnxruntime, av and
+# huggingface-hub transitively. SubMirror only transcribes - it never speaks;
+# the TTS line in the overlay stays a hidden placeholder in v0.1.
+faster-whisper>=1.0.3,<2.0
+
+# -----------------------------------------------------------------------------
+# [required] OCR - Windows built-in OCR via WinRT (the only engine in v0.1)
+# -----------------------------------------------------------------------------
+# SubMirror v0.1 is deliberately single-engine: no PaddleOCR, no RapidOCR, no
+# engine switching and no "ocr.engine" config key. Windows.Media.Ocr uses the
+# recognition model Windows already ships, so nothing extra is downloaded and
+# the installer stays small.
+# Requires Windows 10 1809+ with the recognition language pack installed
+# (Settings > Time & Language > Language > Optional features).
+winsdk>=1.0.0b10
+
+# -----------------------------------------------------------------------------
+# [optional] Capture backends - fallbacks, not required
+# -----------------------------------------------------------------------------
+
+# Secondary WASAPI loopback backend. Used automatically when PyAudioWPatch is
+# not installed; kept in the list because on some Realtek/ASUS drivers this
+# backend negotiates the loopback endpoint more reliably than PortAudio does.
+# soundcard>=0.4.3
+
+# Alternative screen capture backend (Windows Graphics Capture / multi monitor).
+# The built-in ctypes BitBlt path and the Qt QScreen path need no dependency.
+# mss>=9.0.1
+
+# -----------------------------------------------------------------------------
+# [optional] Network transport for the online translation layer
+# -----------------------------------------------------------------------------
+# The translator's HTTP layer runs on urllib (stdlib) by default and needs
+# nothing extra. Installing requests only enables connection pooling / keep
+# alive, which saves a TCP+TLS handshake per subtitle line. Toggle with
+# "translate.prefer_requests" in config.json.
+# requests>=2.31
+
+# -----------------------------------------------------------------------------
+# [required via faster-whisper] ONNX runtime - used by the Silero VAD engine
+# -----------------------------------------------------------------------------
+# Since 0.1.14 SubMirror speaks ONNX directly: src/audio/silero_vad.py loads
+# models\silero_vad.onnx through onnxruntime to decide "is this frame speech?".
+# The package already arrives transitively with faster-whisper (ctranslate2);
+# the pin below is only for the standalone case. Without it - or without the
+# model file - the pipeline silently keeps the built-in energy/adaptive-noise
+# floor gate in src/audio/vad.py, so this stays optional at runtime.
+# onnxruntime>=1.17
+
+# Weights for the Silero VAD model are NOT a package dependency: the ~2.3 MB
+# models\silero_vad.onnx ships inside the repository and inside the portable
+# bundle (MIT licence, see THIRD-PARTY notes in README). No download at runtime.
+
+# =============================================================================
+# Deliberately NOT dependencies
+# -----------------------------------------------------------------------------
+# torch                      - explicitly rejected as the Silero runtime; the
+#                              project standardises on onnxruntime to keep the
+#                              installer under control.
+# pynput / keyboard / pyHook  - global keyboard hooks are forbidden by the
+#                              design. Hotkeys use the Win32 RegisterHotKey API
+#                              plus a lightweight GetAsyncKeyState poll for the
+#                              key-up edge, nothing else.
+# dxcam / D3D11 hooking      - screen content comes from ordinary desktop capture
+#                              APIs only; no DXGI/D3D interception.
+# pywin32                    - the few Win32 calls needed (mutex, hotkeys,
+#                              PostMessage, BitBlt) are made through ctypes.
+# googletrans / deep-translator / translators
+#                            - the free public endpoints are spoken to directly
+#                              over urllib so the request shape, timeout and
+#                              failover chain stay under our control.
+# gettext / babel            - UI language is a hand written dict in
+#                              src/core/config.py, no i18n framework.
+# Any injection / memory reading / overlay DLL / driver package.
+# =============================================================================
+
+# =============================================================================
+# [development only] - not needed to run SubMirror
+# =============================================================================
+# Building the portable bundle and the NSIS installer (files 20 and 21):
+# pyinstaller>=6.6
+#
+# Optional QA helpers:
+# pytest>=8.0
+# ruff>=0.4
+# =============================================================================
